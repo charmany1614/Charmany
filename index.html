@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>车流监控系统</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:"Microsoft YaHei","SimHei",sans-serif;background:#0a1628;color:#e0e6f0;overflow:hidden;height:100vh;display:flex;flex-direction:column;}
+.header{background:linear-gradient(135deg,#0d2137,#1a3a5c);padding:12px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #2a5a8a;flex-shrink:0;}
+.header h1{font-size:20px;color:#7ec8e3;letter-spacing:2px;}
+.header .status{font-size:12px;color:#5a9ab5;display:flex;align-items:center;gap:8px;}
+.header .status .dot{width:8px;height:8px;border-radius:50%;background:#4caf50;display:inline-block;animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
+.main{display:flex;flex:1;overflow:hidden;}
+.map-panel{flex:1;display:flex;align-items:center;justify-content:center;padding:10px;background:#060e1a;position:relative;}
+canvas{border:2px solid #1a4a7a;border-radius:8px;background:#0b1929;cursor:crosshair;}
+.legend{position:absolute;bottom:20px;left:20px;background:rgba(10,22,40,0.92);border:1px solid #2a5a8a;border-radius:8px;padding:10px 14px;font-size:12px;}
+.legend div{display:flex;align-items:center;gap:8px;margin:4px 0;}
+.legend .bar{width:40px;height:6px;border-radius:3px;}
+.side-panel{width:360px;background:#0d1f33;border-left:2px solid #1a4a7a;display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;}
+.tabs{display:flex;background:#0a1628;border-bottom:2px solid #1a4a7a;flex-shrink:0;}
+.tab{flex:1;padding:10px 8px;text-align:center;font-size:13px;cursor:pointer;color:#5a9ab5;border-bottom:2px solid transparent;transition:all 0.3s;}
+.tab:hover{color:#7ec8e3;background:#112a45;}
+.tab.active{color:#7ec8e3;border-bottom-color:#4a9eff;background:#112a45;}
+.tab-content{flex:1;overflow-y:auto;padding:16px;}
+.tab-content::-webkit-scrollbar{width:4px;}
+.tab-content::-webkit-scrollbar-thumb{background:#2a5a8a;border-radius:2px;}
+.panel{display:none;}
+.panel.active{display:block;}
+.form-group{margin-bottom:12px;}
+.form-group label{display:block;font-size:12px;color:#5a9ab5;margin-bottom:4px;}
+.form-group input,.form-group select{width:100%;padding:8px 10px;background:#0a1628;border:1px solid #2a5a8a;border-radius:4px;color:#e0e6f0;font-size:13px;outline:none;}
+.form-group input:focus,.form-group select:focus{border-color:#4a9eff;}
+.btn{padding:8px 16px;border:none;border-radius:4px;cursor:pointer;font-size:13px;transition:all 0.3s;}
+.btn-primary{background:#1a6aaa;color:#e0e6f0;}
+.btn-primary:hover{background:#2a8ada;}
+.btn-sm{padding:5px 12px;font-size:12px;}
+.result-card{background:#0a1628;border:1px solid #1a4a7a;border-radius:6px;padding:12px;margin-bottom:10px;}
+.result-card .title{font-size:14px;color:#7ec8e3;margin-bottom:8px;font-weight:bold;}
+.result-card .row{display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid #112a45;}
+.result-card .row:last-child{border-bottom:none;}
+.result-card .label{color:#5a9ab5;}
+.result-card .value{color:#e0e6f0;}
+.pagination{display:flex;justify-content:center;gap:6px;margin-top:12px;align-items:center;}
+.pagination span{color:#5a9ab5;font-size:12px;}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.stat-box{background:#0a1628;border:1px solid #1a4a7a;border-radius:6px;padding:12px;text-align:center;}
+.stat-box .num{font-size:24px;color:#4a9eff;font-weight:bold;}
+.stat-box .desc{font-size:11px;color:#5a9ab5;margin-top:4px;}
+.vehicle-list{max-height:300px;overflow-y:auto;}
+.vehicle-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid #112a45;cursor:pointer;transition:background 0.2s;font-size:12px;}
+.vehicle-item:hover{background:#112a45;}
+.vehicle-item .v-icon{width:20px;height:20px;background:#4a9eff;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;color:#fff;}
+.vehicle-item .v-info{flex:1;}
+.vehicle-item .v-no{color:#7ec8e3;}
+.vehicle-item .v-speed{color:#5a9ab5;font-size:11px;}
+.empty{text-align:center;color:#3a6a8a;padding:30px;font-size:13px;}
+.table-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+th{background:#0a1628;color:#5a9ab5;padding:8px 6px;text-align:left;border-bottom:2px solid #1a4a7a;white-space:nowrap;}
+td{padding:6px;border-bottom:1px solid #112a45;white-space:nowrap;}
+tr:hover{background:#112a45;}
+.level-1{color:#4caf50;}
+.level-2{color:#ffc107;}
+.level-3{color:#f44336;}
+.refresh-info{font-size:11px;color:#3a6a8a;text-align:center;padding:8px;}
+.entry-select-btn{display:inline-block;padding:4px 10px;margin:2px;border:1px solid #2a5a8a;border-radius:4px;cursor:pointer;font-size:12px;color:#5a9ab5;background:#0a1628;transition:all 0.2s;}
+.entry-select-btn:hover,.entry-select-btn.active{background:#1a6aaa;color:#e0e6f0;border-color:#4a9eff;}
+#tooltip{position:absolute;background:rgba(10,22,40,0.95);border:1px solid #4a9eff;border-radius:6px;padding:8px 12px;font-size:12px;pointer-events:none;display:none;z-index:100;color:#e0e6f0;max-width:200px;}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🚗 车流监控系统</h1>
+  <div class="status"><span class="dot"></span><span id="connStatus">已连接</span> | 刷新间隔: <span id="refreshInterval">3</span>s | 车辆数: <span id="vehicleCount">0</span></div>
+</div>
+<div class="main">
+  <div class="map-panel">
+    <canvas id="mapCanvas" width="800" height="600"></canvas>
+    <div class="legend">
+      <div style="color:#7ec8e3;font-weight:bold;margin-bottom:6px;">拥堵等级</div>
+      <div><span class="bar" style="background:#4caf50;"></span>一级 (0-3辆)</div>
+      <div><span class="bar" style="background:#ffc107;"></span>二级 (4-6辆)</div>
+      <div><span class="bar" style="background:#f44336;"></span>三级 (7-9辆)</div>
+    </div>
+    <div id="tooltip"></div>
+  </div>
+  <div class="side-panel">
+    <div class="tabs">
+      <div class="tab active" data-tab="monitor">实时监控</div>
+      <div class="tab" data-tab="query">车牌查询</div>
+      <div class="tab" data-tab="stats">统计信息</div>
+    </div>
+    <div class="tab-content">
+      <!-- 实时监控面板 -->
+      <div class="panel active" id="panel-monitor">
+        <div class="stat-grid" style="margin-bottom:14px;">
+          <div class="stat-box"><div class="num" id="statTotal">0</div><div class="desc">在线车辆</div></div>
+          <div class="stat-box"><div class="num" id="statEntries">4</div><div class="desc">出入口数</div></div>
+          <div class="stat-box"><div class="num" id="statCheckpoints">6</div><div class="desc">检查站数</div></div>
+          <div class="stat-box"><div class="num" id="statSegments">10</div><div class="desc">路段数</div></div>
+        </div>
+        <div style="font-size:13px;color:#7ec8e3;margin-bottom:8px;font-weight:bold;">实时车辆列表</div>
+        <div class="vehicle-list" id="vehicleList">
+          <div class="empty">加载中...</div>
+        </div>
+        <div class="refresh-info">上次刷新: <span id="lastRefresh">-</span></div>
+      </div>
+      <!-- 车牌查询面板 -->
+      <div class="panel" id="panel-query">
+        <div class="form-group">
+          <label>车牌号码</label>
+          <input type="text" id="queryNo" placeholder="输入车牌号 (如 V-1)" />
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:14px;">
+          <button class="btn btn-primary" onclick="queryVehicleDetail()">查询详情</button>
+          <button class="btn btn-primary" onclick="queryVehicleHistory()">通行历史</button>
+        </div>
+        <div id="queryResult"></div>
+        <div id="historyResult"></div>
+        <div id="historyPagination"></div>
+      </div>
+      <!-- 统计信息面板 -->
+      <div class="panel" id="panel-stats">
+        <div class="form-group">
+          <label>按车牌统计</label>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="statVehicleNo" placeholder="车牌号" style="flex:1;" />
+            <button class="btn btn-primary btn-sm" onclick="statByVehicle()">查询</button>
+          </div>
+          <div id="statVehicleResult" style="margin-top:8px;"></div>
+        </div>
+        <hr style="border:none;border-top:1px solid #1a4a7a;margin:14px 0;">
+        <div class="form-group">
+          <label>按出入口统计</label>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin:8px 0;" id="entryButtons"></div>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="statEntryNo" placeholder="出入口编号" style="flex:1;" />
+            <button class="btn btn-primary btn-sm" onclick="statByEntry()">查询</button>
+          </div>
+          <div id="statEntryResult" style="margin-top:8px;"></div>
+        </div>
+        <hr style="border:none;border-top:1px solid #1a4a7a;margin:14px 0;">
+        <div style="font-size:13px;color:#7ec8e3;font-weight:bold;margin-bottom:8px;">全部出入口统计</div>
+        <div id="allEntryStats"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  // ========== 配置 ==========
+  var API_BASE = 'http://127.0.0.1:12345/';
+  var REFRESH_MS = 3000;
+  var MAP_W = 800, MAP_H = 600;
+
+  // ========== 状态 ==========
+  var entries = [];
+  var checkpoints = [];
+  var segments = [];
+  var vehiclePositions = [];
+  var segmentVehicleCount = {};
+  var selectedVehicle = null;
+  var historyPage = 1;
+  var historyNo = '';
+  var refreshTimer = null;
+  var canvas, ctx;
+  var mouseX = -1, mouseY = -1;
+  var hoveredVehicle = null;
+
+  // ========== 工具函数 ==========
+  function httpGet(url, cb) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState === 4) {
+        if (xhr.status === 200) {
+          try { cb(null, JSON.parse(xhr.responseText)); }
+          catch(e) { cb(null, xhr.responseText); }
+        } else {
+          cb('HTTP ' + xhr.status);
+        }
+      }
+    };
+    xhr.timeout = 5000;
+    xhr.ontimeout = function() { cb('请求超时'); };
+    xhr.onerror = function() { cb('连接失败'); };
+    xhr.send();
+  }
+
+  function parseDate(s) {
+    if (!s) return '-';
+    var m = s.match(/\/Date\((\d+)([+-]\d{4})?\)\//);
+    if (m) return new Date(parseInt(m[1])).toLocaleString('zh-CN');
+    return s;
+  }
+
+  // 计算点到线段的距离及最近点
+  function pointToSegment(px, py, x1, y1, x2, y2) {
+    var dx = x2 - x1, dy = y2 - y1;
+    var len2 = dx*dx + dy*dy;
+    if (len2 === 0) return {dist: Math.sqrt((px-x1)*(px-x1)+(py-y1)*(py-y1)), t:0};
+    var t = ((px-x1)*dx + (py-y1)*dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    var cx = x1 + t*dx, cy = y1 + t*dy;
+    return {dist: Math.sqrt((px-cx)*(px-cx)+(py-cy)*(py-cy)), t:t};
+  }
+
+  // ========== 构建路段 ==========
+  function buildSegments() {
+    segments = [];
+    // 入口道路
+    for (var i = 0; i < entries.length; i++) {
+      var e = entries[i];
+      segments.push({
+        id: e.No,
+        name: e.Name,
+        x1: e.Start.Pos_X, y1: e.Start.Pos_Y,
+        x2: e.End.Pos_X, y2: e.End.Pos_Y,
+        type: 'entry',
+        pos: e.Position
+      });
+    }
+    // 检查站道路
+    for (var i = 0; i < checkpoints.length; i++) {
+      var c = checkpoints[i];
+      segments.push({
+        id: c.No,
+        name: c.Name,
+        x1: c.Start.Pos_X, y1: c.Start.Pos_Y,
+        x2: c.End.Pos_X, y2: c.End.Pos_Y,
+        type: 'checkpoint',
+        pos: c.Position
+      });
+    }
+  }
+
+  // ========== 统计每段路上的车辆数 ==========
+  function countVehiclesOnSegments() {
+    segmentVehicleCount = {};
+    var THRESHOLD = 30; // 像素距离阈值
+    for (var i = 0; i < segments.length; i++) {
+      segmentVehicleCount[segments[i].id] = 0;
+    }
+    for (var v = 0; v < vehiclePositions.length; v++) {
+      var vp = vehiclePositions[v];
+      var px = vp.Position.Pos_X, py = vp.Position.Pos_Y;
+      var bestDist = Infinity, bestSeg = null;
+      for (var s = 0; s < segments.length; s++) {
+        var seg = segments[s];
+        var r = pointToSegment(px, py, seg.x1, seg.y1, seg.x2, seg.y2);
+        if (r.dist < bestDist) {
+          bestDist = r.dist;
+          bestSeg = seg;
+        }
+      }
+      if (bestSeg && bestDist < THRESHOLD) {
+        segmentVehicleCount[bestSeg.id] = (segmentVehicleCount[bestSeg.id] || 0) + 1;
+      }
+    }
+  }
+
+  // 获取拥堵等级颜色
+  function getCongestionColor(count) {
+    if (count <= 3) return '#4caf50'; // 一级 绿
+    if (count <= 6) return '#ffc107'; // 二级 黄
+    return '#f44336'; // 三级 红
+  }
+  function getCongestionLevel(count) {
+    if (count <= 3) return 1;
+    if (count <= 6) return 2;
+    return 3;
+  }
+
+  // ========== Canvas 绘制 ==========
+  function draw() {
+    canvas = document.getElementById('mapCanvas');
+    ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, MAP_W, MAP_H);
+
+    // 背景
+    ctx.fillStyle = '#0b1929';
+    ctx.fillRect(0, 0, MAP_W, MAP_H);
+
+    // 网格
+    ctx.strokeStyle = '#0e2240';
+    ctx.lineWidth = 0.5;
+    for (var x = 0; x <= MAP_W; x += 50) {
+      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,MAP_H); ctx.stroke();
+    }
+    for (var y = 0; y <= MAP_H; y += 50) {
+      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(MAP_W,y); ctx.stroke();
+    }
+
+    // 绘制路段
+    for (var i = 0; i < segments.length; i++) {
+      var seg = segments[i];
+      var count = segmentVehicleCount[seg.id] || 0;
+      var color = getCongestionColor(count);
+      // 路段底色(宽)
+      ctx.strokeStyle = color.replace(')', ',0.25)').replace('rgb','rgba').replace('#','');
+      // 使用hex转换
+      var r = parseInt(color.substr(1,2),16);
+      var g = parseInt(color.substr(3,2),16);
+      var b = parseInt(color.substr(5,2),16);
+      ctx.strokeStyle = 'rgba('+r+','+g+','+b+',0.25)';
+      ctx.lineWidth = 18;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(seg.x1, seg.y1);
+      ctx.lineTo(seg.x2, seg.y2);
+      ctx.stroke();
+
+      // 路段主线
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(seg.x1, seg.y1);
+      ctx.lineTo(seg.x2, seg.y2);
+      ctx.stroke();
+
+      // 方向箭头
+      drawArrow(seg.x1, seg.y1, seg.x2, seg.y2, color);
+    }
+
+    // 绘制检查站标记
+    for (var i = 0; i < checkpoints.length; i++) {
+      var cp = checkpoints[i];
+      var px = cp.Position.Pos_X, py = cp.Position.Pos_Y;
+      // 菱形
+      ctx.fillStyle = '#ff9800';
+      ctx.beginPath();
+      ctx.moveTo(px, py-8);
+      ctx.lineTo(px+8, py);
+      ctx.lineTo(px, py+8);
+      ctx.lineTo(px-8, py);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#0b1929';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      // 标签
+      ctx.fillStyle = '#ffc107';
+      ctx.font = '10px Microsoft YaHei';
+      ctx.textAlign = 'center';
+      ctx.fillText(cp.Name, px, py - 12);
+    }
+
+    // 绘制出入口标记
+    for (var i = 0; i < entries.length; i++) {
+      var e = entries[i];
+      var px = e.Position.Pos_X, py = e.Position.Pos_Y;
+      // 圆形
+      ctx.fillStyle = '#1a6aaa';
+      ctx.beginPath();
+      ctx.arc(px, py, 12, 0, Math.PI*2);
+      ctx.fill();
+      ctx.strokeStyle = '#4a9eff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // 编号
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 8px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(e.No, px, py);
+      // 标签
+      ctx.fillStyle = '#7ec8e3';
+      ctx.font = '11px Microsoft YaHei';
+      ctx.textBaseline = 'alphabetic';
+      var lx = px, ly = py - 16;
+      if (py < 30) ly = py + 24;
+      if (py > MAP_H - 30) ly = py - 20;
+      if (px < 30) lx = px + 40;
+      if (px > MAP_W - 30) lx = px - 40;
+      ctx.fillText(e.Name, lx, ly);
+    }
+
+    // 绘制车辆
+    for (var i = 0; i < vehiclePositions.length; i++) {
+      var vp = vehiclePositions[i];
+      var px = vp.Position.Pos_X, py = vp.Position.Pos_Y;
+      var isSelected = (selectedVehicle === vp.No);
+      // 车辆图标
+      ctx.fillStyle = isSelected ? '#ff5722' : '#4a9eff';
+      ctx.beginPath();
+      ctx.roundRect(px-8, py-5, 16, 10, 3);
+      ctx.fill();
+      if (isSelected) {
+        ctx.strokeStyle = '#ff9800';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      // 车牌号
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 7px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(vp.No, px, py);
+    }
+
+    // 悬停提示
+    if (hoveredVehicle) {
+      var vp = hoveredVehicle;
+      var px = vp.Position.Pos_X, py = vp.Position.Pos_Y;
+      ctx.strokeStyle = '#4a9eff';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3,3]);
+      ctx.beginPath();
+      ctx.arc(px, py, 16, 0, Math.PI*2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  function drawArrow(x1, y1, x2, y2, color) {
+    var mx = (x1+x2)/2, my = (y1+y2)/2;
+    var angle = Math.atan2(y2-y1, x2-x1);
+    var len = 6;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(mx + len*Math.cos(angle), my + len*Math.sin(angle));
+    ctx.lineTo(mx + len*Math.cos(angle + 2.5), my + len*Math.sin(angle + 2.5));
+    ctx.lineTo(mx + len*Math.cos(angle - 2.5), my + len*Math.sin(angle - 2.5));
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // ========== 数据加载 ==========
+  function loadEntries(cb) {
+    httpGet(API_BASE + 'getEntries', function(err, data) {
+      if (!err && Array.isArray(data)) entries = data;
+      if (cb) cb();
+    });
+  }
+
+  function loadCheckpoints(cb) {
+    httpGet(API_BASE + 'getCheckpoints', function(err, data) {
+      if (!err && Array.isArray(data)) checkpoints = data;
+      if (cb) cb();
+    });
+  }
+
+  function loadVehiclePositions(cb) {
+    httpGet(API_BASE + 'getVehiclePositions', function(err, data) {
+      if (!err && Array.isArray(data)) vehiclePositions = data;
+      if (cb) cb(err);
+    });
+  }
+
+  function refreshAll() {
+    loadEntries(function() {
+      loadCheckpoints(function() {
+        buildSegments();
+        loadVehiclePositions(function(err) {
+          if (!err) {
+            countVehiclesOnSegments();
+            draw();
+            updateMonitorPanel();
+          }
+          document.getElementById('lastRefresh').textContent = new Date().toLocaleTimeString('zh-CN');
+          document.getElementById('vehicleCount').textContent = vehiclePositions.length;
+          document.getElementById('connStatus').textContent = err ? '连接失败' : '已连接';
+          document.querySelector('.dot').style.background = err ? '#f44336' : '#4caf50';
+        });
+      });
+    });
+  }
+
+  // ========== 监控面板更新 ==========
+  function updateMonitorPanel() {
+    document.getElementById('statTotal').textContent = vehiclePositions.length;
+    document.getElementById('statEntries').textContent = entries.length;
+    document.getElementById('statCheckpoints').textContent = checkpoints.length;
+    document.getElementById('statSegments').textContent = segments.length;
+
+    var html = '';
+    for (var i = 0; i < vehiclePositions.length; i++) {
+      var vp = vehiclePositions[i];
+      html += '<div class="vehicle-item" onclick="window._selectVehicle(\'' + vp.No + '\')">';
+      html += '<div class="v-icon">' + (i+1) + '</div>';
+      html += '<div class="v-info"><div class="v-no">' + vp.No + '</div>';
+      html += '<div class="v-speed">位置: (' + vp.Position.Pos_X + ', ' + vp.Position.Pos_Y + ')</div></div></div>';
+    }
+    if (!vehiclePositions.length) html = '<div class="empty">暂无车辆</div>';
+    document.getElementById('vehicleList').innerHTML = html;
+  }
+
+  // ========== 车牌查询 ==========
+  window._selectVehicle = function(no) {
+    selectedVehicle = no;
+    document.getElementById('queryNo').value = no;
+    draw();
+  };
+
+  window.queryVehicleDetail = function() {
+    var no = document.getElementById('queryNo').value.trim();
+    if (!no) { alert('请输入车牌号'); return; }
+    httpGet(API_BASE + 'getVehicleDetail?no=' + encodeURIComponent(no), function(err, data) {
+      var div = document.getElementById('queryResult');
+      if (err) { div.innerHTML = '<div class="result-card"><div class="empty">查询失败: ' + err + '</div></div>'; return; }
+      if (typeof data === 'string' && data.indexOf('Fault') > -1) {
+        div.innerHTML = '<div class="result-card"><div class="empty">未找到该车辆</div></div>'; return;
+      }
+      selectedVehicle = no;
+      draw();
+      var html = '<div class="result-card">';
+      html += '<div class="title">🚗 ' + (data.No || no) + ' 详情</div>';
+      html += '<div class="row"><span class="label">车牌号</span><span class="value">' + (data.No||'-') + '</span></div>';
+      html += '<div class="row"><span class="label">入站名称</span><span class="value">' + (data.EnterName||'-') + '</span></div>';
+      html += '<div class="row"><span class="label">入站编号</span><span class="value">' + (data.EnterNo||'-') + '</span></div>';
+      html += '<div class="row"><span class="label">入站时间</span><span class="value">' + parseDate(data.EnterTime) + '</span></div>';
+      html += '<div class="row"><span class="label">当前位置</span><span class="value">(' + (data.Position?data.Position.Pos_X:'-') + ', ' + (data.Position?data.Position.Pos_Y:'-') + ')</span></div>';
+      html += '<div class="row"><span class="label">速度</span><span class="value">' + (data.Speed||0) + ' km/h</span></div>';
+      html += '</div>';
+      div.innerHTML = html;
+    });
+  };
+
+  window.queryVehicleHistory = function(page) {
+    var no = document.getElementById('queryNo').value.trim();
+    if (!no) { alert('请输入车牌号'); return; }
+    historyNo = no;
+    historyPage = page || 1;
+    httpGet(API_BASE + 'getVehiclesHistory?no=' + encodeURIComponent(no) + '&page=' + historyPage, function(err, data) {
+      var div = document.getElementById('historyResult');
+      var pgDiv = document.getElementById('historyPagination');
+      if (err) { div.innerHTML = '<div class="result-card"><div class="empty">查询失败</div></div>'; pgDiv.innerHTML=''; return; }
+      if (!Array.isArray(data) || !data.length) {
+        div.innerHTML = '<div class="result-card"><div class="empty">无通行记录</div></div>';
+        pgDiv.innerHTML = '';
+        return;
+      }
+      var html = '<div class="result-card"><div class="title">📋 通行历史 (第' + historyPage + '页)</div>';
+      html += '<div class="table-wrap"><table>';
+      html += '<tr><th>入站</th><th>入站时间</th><th>出站</th><th>出站时间</th><th>速度</th><th>费用</th></tr>';
+      for (var i = 0; i < data.length; i++) {
+        var r = data[i];
+        html += '<tr>';
+        html += '<td>' + (r.EnterName||'-') + '</td>';
+        html += '<td>' + parseDate(r.EnterTime) + '</td>';
+        html += '<td>' + (r.ExitName||'-') + '</td>';
+        html += '<td>' + parseDate(r.ExitTime) + '</td>';
+        html += '<td>' + (r.Speed||0) + '</td>';
+        html += '<td>' + (r.Charge?r.Charge.toFixed(2):'0.00') + '</td>';
+        html += '</tr>';
+      }
+      html += '</table></div></div>';
+      div.innerHTML = html;
+
+      // 分页
+      var pgHtml = '<div class="pagination">';
+      pgHtml += '<button class="btn btn-sm btn-primary" ' + (historyPage<=1?'disabled':'') + ' onclick="queryVehicleHistory('+(historyPage-1)+')">上一页</button>';
+      pgHtml += '<span>第 ' + historyPage + ' 页</span>';
+      pgHtml += '<button class="btn btn-sm btn-primary" ' + (data.length<5?'disabled':'') + ' onclick="queryVehicleHistory('+(historyPage+1)+')">下一页</button>';
+      pgHtml += '</div>';
+      pgDiv.innerHTML = pgHtml;
+    });
+  };
+
+  // ========== 统计 ==========
+  window.statByVehicle = function() {
+    var no = document.getElementById('statVehicleNo').value.trim();
+    if (!no) { alert('请输入车牌号'); return; }
+    httpGet(API_BASE + 'getStatisticsByVehicle?no=' + encodeURIComponent(no), function(err, data) {
+      var div = document.getElementById('statVehicleResult');
+      if (err) { div.innerHTML = '<div class="empty">查询失败</div>'; return; }
+      var val = (typeof data === 'number') ? data.toFixed(2) : (data || '0');
+      div.innerHTML = '<div class="result-card"><div class="row"><span class="label">车牌 ' + no + '</span><span class="value">' + val + '</span></div></div>';
+    });
+  };
+
+  window.statByEntry = function() {
+    var no = document.getElementById('statEntryNo').value.trim();
+    if (!no) { alert('请输入出入口编号'); return; }
+    httpGet(API_BASE + 'getStatisticsByEntry?no=' + encodeURIComponent(no), function(err, data) {
+      var div = document.getElementById('statEntryResult');
+      if (err) { div.innerHTML = '<div class="empty">查询失败</div>'; return; }
+      div.innerHTML = '<div class="result-card"><div class="title">📊 ' + no + ' 统计</div>';
+      div.innerHTML += '<div class="row"><span class="label">进入车辆</span><span class="value">' + (data.Enter||0) + '</span></div>';
+      div.innerHTML += '<div class="row"><span class="label">离开车辆</span><span class="value">' + (data.Exit||0) + '</span></div>';
+      div.innerHTML += '</div>';
+    });
+  };
+
+  function loadAllEntryStats() {
+    var div = document.getElementById('allEntryStats');
+    var btns = document.getElementById('entryButtons');
+    btns.innerHTML = '';
+    div.innerHTML = '<div class="empty">加载中...</div>';
+
+    var html = '';
+    var btnHtml = '';
+    var loaded = 0;
+    var total = entries.length;
+
+    if (!total) { div.innerHTML = '<div class="empty">暂无出入口数据</div>'; return; }
+
+    for (var i = 0; i < entries.length; i++) {
+      (function(e) {
+        btnHtml += '<span class="entry-select-btn" onclick="document.getElementById(\'statEntryNo\').value=\'' + e.No + '\';statByEntry();">' + e.Name + '</span>';
+        httpGet(API_BASE + 'getStatisticsByEntry?no=' + encodeURIComponent(e.No), function(err, data) {
+          loaded++;
+          html += '<div class="result-card">';
+          html += '<div class="row"><span class="label">' + e.Name + ' (' + e.No + ')</span><span class="value"></span></div>';
+          html += '<div class="row"><span class="label">  进入</span><span class="value">' + (data?data.Enter:0) + '</span></div>';
+          html += '<div class="row"><span class="label">  离开</span><span class="value">' + (data?data.Exit:0) + '</span></div>';
+          html += '</div>';
+          if (loaded === total) {
+            div.innerHTML = html;
+          }
+        });
+      })(entries[i]);
+    }
+    btns.innerHTML = btnHtml;
+  }
+
+  // ========== Tab 切换 ==========
+  document.querySelectorAll('.tab').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});
+      document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('active');});
+      tab.classList.add('active');
+      document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+      if (tab.dataset.tab === 'stats') loadAllEntryStats();
+    });
+  });
+
+  // ========== Canvas 鼠标交互 ==========
+  function initCanvasEvents() {
+    var canvas = document.getElementById('mapCanvas');
+    var tooltip = document.getElementById('tooltip');
+    canvas.addEventListener('mousemove', function(e) {
+      var rect = canvas.getBoundingClientRect();
+      mouseX = e.clientX - rect.left;
+      mouseY = e.clientY - rect.top;
+      // 检查悬停车辆
+      hoveredVehicle = null;
+      for (var i = 0; i < vehiclePositions.length; i++) {
+        var vp = vehiclePositions[i];
+        var dx = mouseX - vp.Position.Pos_X;
+        var dy = mouseY - vp.Position.Pos_Y;
+        if (dx*dx + dy*dy < 15*15) {
+          hoveredVehicle = vp;
+          break;
+        }
+      }
+      if (hoveredVehicle) {
+        tooltip.style.display = 'block';
+        tooltip.style.left = (e.clientX - canvas.parentElement.getBoundingClientRect().left + 12) + 'px';
+        tooltip.style.top = (e.clientY - canvas.parentElement.getBoundingClientRect().top - 10) + 'px';
+        tooltip.innerHTML = '<b>' + hoveredVehicle.No + '</b><br>位置: (' + hoveredVehicle.Position.Pos_X + ', ' + hoveredVehicle.Position.Pos_Y + ')';
+      } else {
+        tooltip.style.display = 'none';
+      }
+      draw();
+    });
+
+    canvas.addEventListener('click', function(e) {
+      var rect = canvas.getBoundingClientRect();
+      var cx = e.clientX - rect.left;
+      var cy = e.clientY - rect.top;
+      for (var i = 0; i < vehiclePositions.length; i++) {
+        var vp = vehiclePositions[i];
+        var dx = cx - vp.Position.Pos_X;
+        var dy = cy - vp.Position.Pos_Y;
+        if (dx*dx + dy*dy < 15*15) {
+          selectedVehicle = (selectedVehicle === vp.No) ? null : vp.No;
+          document.getElementById('queryNo').value = selectedVehicle || '';
+          draw();
+          return;
+        }
+      }
+      selectedVehicle = null;
+      draw();
+    });
+
+    canvas.addEventListener('mouseleave', function() {
+      hoveredVehicle = null;
+      tooltip.style.display = 'none';
+      draw();
+    });
+  }
+
+  // ========== roundRect polyfill ==========
+  if (!CanvasRenderingContext2D.prototype.roundRect) {
+    CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+      if (typeof r === 'number') r = [r,r,r,r];
+      this.moveTo(x+r[0], y);
+      this.lineTo(x+w-r[1], y);
+      this.quadraticCurveTo(x+w, y, x+w, y+r[1]);
+      this.lineTo(x+w, y+h-r[2]);
+      this.quadraticCurveTo(x+w, y+h, x+w-r[2], y+h);
+      this.lineTo(x+r[3], y+h);
+      this.quadraticCurveTo(x, y+h, x, y+h-r[3]);
+      this.lineTo(x, y+r[0]);
+      this.quadraticCurveTo(x, y, x+r[0], y);
+      this.closePath();
+    };
+  }
+
+  // ========== 页面可见性切换 ==========
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+      if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+    } else {
+      refreshAll();
+      refreshTimer = setInterval(refreshAll, REFRESH_MS);
+    }
+  });
+
+  // ========== 初始化 ==========
+  function init() {
+    initCanvasEvents();
+    refreshAll();
+    refreshTimer = setInterval(refreshAll, REFRESH_MS);
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
